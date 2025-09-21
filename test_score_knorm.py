@@ -13,7 +13,7 @@ print("=== DEMO METHOD SCORE ===")
 device = "cuda:0"
 # Đổi sang model open-source:
 model = "mistralai/Mistral-7B-Instruct-v0.2"
-model_kwargs = {"attn_implementation": "flash_attention_2"}
+model_kwargs = {"attn_implementation": "eager"}
 
 pipe = pipeline("kv-press-text-generation", model=model, device=device, model_kwargs=model_kwargs)
 
