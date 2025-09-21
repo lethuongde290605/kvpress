@@ -15,7 +15,7 @@ device = "cuda:0"
 model = "mistralai/Mistral-7B-Instruct-v0.2"
 model_kwargs = {"attn_implementation": "eager"}
 
-pipe = pipeline("kv-press-text-generation", model=model, device=device, model_kwargs=model_kwargs)
+pipe = pipeline("kv-press-text-generation", model=model, device=device, load_in_8bit = True, model_kwargs=model_kwargs)
 
 context = "A very long text you want to compress once and for all"
 question = "\nA question about the compressed context"  # optional
