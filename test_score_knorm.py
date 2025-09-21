@@ -22,3 +22,6 @@ question = "\nA question about the compressed context"  # optional
 
 press = KnormPress(compression_ratio=0.5)
 answer = pipe(context, question=question, press=press)["answer"]
+
+print(f'question: {question}')
+print(f'answer: {answer}')
