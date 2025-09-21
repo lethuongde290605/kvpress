@@ -9,7 +9,7 @@ from matplotlib.colors import LinearSegmentedColormap
 
 import numpy as np
 import torch
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from kvpress.presses.knorm_press import KnormPress
 from kvpress.presses.think_press import ThinKPress
@@ -19,6 +19,7 @@ warnings.filterwarnings("ignore")
 
 device = "cuda:0"
 ckpt = "mistralai/Mistral-7B-Instruct-v0.2"  # Use open-source model for Colab
+tokenizer = AutoTokenizer.from_pretrained(ckpt)
 
 def get_size_of_cache(cache):
     if isinstance(cache, QuantoQuantizedCache):
@@ -40,12 +41,17 @@ def get_size_of_cache(cache):
     else:
         raise NotImplementedError(f"{type(cache)} is not supported yet.")
 
-def get_prefilling_stats(press, n_tokens, cache_implementation="dynamic"):
+def get_prefilling_stats(press, n_tokens, cache_implementation="quantized"):
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.empty_cache()
     idle_peak_memory = torch.cuda.max_memory_allocated()
-    # Do NOT use flash_attention
-    model = AutoModelForCausalLM.from_pretrained(ckpt, torch_dtype="auto").to(device)
+    # Quantize model weights to int8 for memory saving
+    model = AutoModelForCausalLM.from_pretrained(
+        ckpt,
+        device_map="auto",
+        load_in_8bit=True,
+        attn_implementation="eager"
+    )
     initial_peak_memory = torch.cuda.max_memory_allocated()
 
     inputs = torch.arange(n_tokens).reshape([1, n_tokens]).to(device)
@@ -82,19 +88,26 @@ def get_prefilling_stats(press, n_tokens, cache_implementation="dynamic"):
         "Peak memory w/o weights and KV cache (GB)": (peak_memory - cache_size - initial_peak_memory) / 1024**3
     }
 
-def get_generation_stats(press, n_tokens, max_new_tokens=100, cache_implementation="dynamic"):
+def get_generation_stats(press, n_tokens, max_new_tokens=100, cache_implementation="quantized"):
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.empty_cache()
     idle_peak_memory = torch.cuda.max_memory_allocated()
-    # Do NOT use flash_attention
-    model = AutoModelForCausalLM.from_pretrained(ckpt, torch_dtype="auto").to(device)
-    model.generation_config.eos_token_id = None
-    model.generation_config.stop_strings = None
+    # Quantize model weights to int8 for memory saving
+    model = AutoModelForCausalLM.from_pretrained(
+        ckpt,
+        device_map="auto",
+        load_in_8bit=True,
+        attn_implementation="eager"
+    )
+    initial_peak_memory = torch.cuda.max_memory_allocated()
+
+    # Safer generation config
+    model.generation_config.eos_token_id = tokenizer.eos_token_id
+    model.generation_config.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
     model.generation_config.do_sample = False
     model.generation_config.temperature = None
     model.generation_config.top_p = None
 
-    initial_peak_memory = torch.cuda.max_memory_allocated()
     inputs = torch.arange(n_tokens).reshape([1, n_tokens]).to(device)
 
     with press(model):
@@ -102,9 +115,12 @@ def get_generation_stats(press, n_tokens, max_new_tokens=100, cache_implementati
         if cache_implementation == "quantized":
             kwargs = dict(cache_implementation="quantized", cache_config={"backend": "quanto", "nbits": 4})
         start = time()
-        outputs = model.generate(inputs, max_new_tokens=max_new_tokens,
-                                generation_config=model.generation_config,
-                                pad_token_id=-1, **kwargs)
+        outputs = model.generate(
+            inputs,
+            max_new_tokens=max_new_tokens,
+            generation_config=model.generation_config,
+            **kwargs
+        )
         total_time = time() - start
         assert outputs.shape == (1, n_tokens + max_new_tokens), outputs.shape
 
@@ -199,4 +215,4 @@ if __name__ == "__main__":
         generation_stats_think = {ratio: get_generation_stats(ThinKPress(ratio), n_tokens) for ratio in tqdm(compression_ratios)}
         stats_think[n_tokens] = combine_stats(prefilling_stats_think, generation_stats_think)
 
-    plot_compression_stats(stats_knorm, stats_think, title_suffix=' (bfloat16)', max_peak_memory=45, max_cache_size=17.5)
+    plot_compression_stats(stats_knorm, stats_think, title_suffix=' (int8 quantized)', max_peak_memory=45, max_cache_size=17.5)
