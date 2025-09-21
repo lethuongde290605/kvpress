@@ -199,7 +199,7 @@ def plot_compression_stats(stats_knorm, stats_think, title_suffix='', max_peak_m
 
 if __name__ == "__main__":
     compression_ratios = [0.0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
-    context_lengths = [8_000, 16_000, 32_000]  # Reduce for Colab speed, increase if needed
+    context_lengths = [1024, 2048, 4096]
 
     stats_knorm = {}
     stats_think = {}
