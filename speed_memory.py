@@ -20,6 +20,9 @@ warnings.filterwarnings("ignore")
 device = "cuda:0"
 ckpt = "mistralai/Mistral-7B-Instruct-v0.2"  # Use open-source model for Colab
 tokenizer = AutoTokenizer.from_pretrained(ckpt)
+from transformers import BitsAndBytesConfig
+
+quantization_config = BitsAndBytesConfig(load_in_8bit=True)
 
 def get_size_of_cache(cache):
     if isinstance(cache, QuantoQuantizedCache):
@@ -49,9 +52,10 @@ def get_prefilling_stats(press, n_tokens, cache_implementation="quantized"):
     model = AutoModelForCausalLM.from_pretrained(
         ckpt,
         device_map="auto",
-        load_in_8bit=True,
+        quantization_config=quantization_config,
         attn_implementation="eager"
     )
+
     initial_peak_memory = torch.cuda.max_memory_allocated()
 
     inputs = torch.arange(n_tokens).reshape([1, n_tokens]).to(device)
@@ -96,7 +100,7 @@ def get_generation_stats(press, n_tokens, max_new_tokens=100, cache_implementati
     model = AutoModelForCausalLM.from_pretrained(
         ckpt,
         device_map="auto",
-        load_in_8bit=True,
+        quantization_config=quantization_config,
         attn_implementation="eager"
     )
     initial_peak_memory = torch.cuda.max_memory_allocated()
